@@ -6,9 +6,25 @@ const bcrypt = require('bcryptjs'); // encrypt password
 //Check validation for express
 const { check, validationResult } = require('express-validator');
 const gravatar = require('gravatar') // get user image by email
+const auth = require('../middleware/auth')
 
 //Models
 const User = require('../models/User');
+
+//@route POST api/user
+//@desc Information user
+//@access Private
+router.get('/', auth, async (req, res) => {
+
+  try {
+    //get user information by id
+    const user = await User.findById(req.user.id).select('-password')
+    res.json(user)
+  } catch (error) {
+    console.log(error.message)
+    res.status(500).send('Server Error')
+  }
+})
 
 //@route POST api/user/register
 //@desc Register user
@@ -26,7 +42,7 @@ router.post(
     const error = validationResult(req);
     if (!error.isEmpty()) {
       return res.status(400).json({
-        errors: errors.array()
+        error: error.array()
       })
     }
 
@@ -92,5 +108,82 @@ router.post(
     }
 
   })
+
+//@route POST api/user/login
+//@desc Register user
+//@access Public
+router.post(
+  '/login', [
+  //Validation for email and password
+  check('email', 'please include a valid email').isEmail(),
+  check('password', 'password is required').exists()
+],
+  async (req, res) => {
+    const error = validationResult(req);
+    if (!error.isEmpty()) {
+      return res.status(400).json({
+        error: error.array()
+      })
+    }
+    //if everything is good
+    // get email and password from request body
+    const { email, password } = req.body
+    // console.log(req)
+
+    try {
+      //find user
+      let user = await User.findOne({
+        email
+      })
+      console.log(user) // объект юзер из базы
+
+      //If user nod found in database
+      if (!user) {
+        return res.status(400).json({
+          error: [{
+            msg: 'Invalid Credentials'
+          }]
+        })
+      }
+
+      //Know user fouded by email let's compare password
+      const isMatch = await bcrypt.compare(password, user.password)
+      // console.log(isMatch) // true
+
+      //password dont match
+      if (!isMatch) {
+        return res.status(400).json({
+          error: [{
+            msg: 'Invalid Credentials'
+          }]
+        })
+      }
+
+      //payload for jwt
+      const payload = {
+        user: {
+          id: user.id
+        }
+      }
+
+      jwt.sign(
+        payload,
+        process.env.JWT_SECRET, {
+        expiresIn: 360000
+      }, (err, token) => {
+        if (err) throw errr
+        res.json({
+          id: user._id,
+          token,
+        })
+      }
+      )
+
+    } catch (e) {
+      console.log(err.message);
+      res.status(500).send('Server error')
+    }
+  }
+)
 
 module.exports = router
